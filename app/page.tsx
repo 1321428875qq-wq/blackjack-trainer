@@ -9,7 +9,7 @@ const suits = ["♠", "♥", "♦", "♣"];
 const ranks = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
 const rankValue = Object.fromEntries(ranks.map((r, i) => [r, i + 2]));
 
-const APP_VERSION = "v0.1.7-beta";
+const APP_VERSION = "v0.2.0-beta";
 const STARTING_STACK = 5000;
 const SMALL_BLIND = 10;
 const BIG_BLIND = 20;
@@ -45,6 +45,19 @@ type RoomState = {
   players: { id: string; name: string }[];
 };
 
+type SyncedGameState = {
+  players: Player[];
+  deck: Card[];
+  board: Card[];
+  pot: number;
+  currentBet: number;
+  street: string;
+  message: string;
+  actionLog: string[];
+  handOver: boolean;
+  showAiCards: boolean;
+};
+
 const aiPersonas = [
   { name: "疯狗", style: "loose_aggressive" },
   { name: "老油条", style: "tricky" },
@@ -75,7 +88,7 @@ function isRed(card: Card) {
   return card.suit === "♥" || card.suit === "♦";
 }
 
-function createPlayers(aiLevel: string): Player[] {
+function createPlayers(aiLevel: string, includeSecondHuman = false): Player[] {
   const heroPlayer: Player = {
     id: 0,
     name: "你",
@@ -87,19 +100,22 @@ function createPlayers(aiLevel: string): Player[] {
     isHero: true,
     level: "hero",
   };
+  const aiPlayers: Player[] = Array.from({ length: 5 }, (_, i): Player => {
+    const isSecondHumanSeat = includeSecondHuman && i === 4;
 
-  const aiPlayers: Player[] = Array.from({ length: 5 }, (_, i): Player => ({
-    id: i + 1,
-    name: `AI ${i + 1}｜${aiPersonas[i].name}`,
-    stack: STARTING_STACK,
-    hand: [],
-    folded: false,
-    bet: 0,
-    lastAction: "等待",
-    isHero: false,
-    level: aiLevel,
-    persona: aiPersonas[i].style,
-  }));
+    return {
+      id: i + 1,
+      name: isSecondHumanSeat ? "真人玩家 2" : `AI ${i + 1}｜${aiPersonas[i].name}`,
+      stack: STARTING_STACK,
+      hand: [],
+      folded: false,
+      bet: 0,
+      lastAction: "等待",
+      isHero: false,
+      level: isSecondHumanSeat ? "human_remote" : aiLevel,
+      persona: isSecondHumanSeat ? "human_remote" : aiPersonas[i].style,
+    };
+  });
 
   return [heroPlayer, ...aiPlayers];
 }
@@ -383,6 +399,7 @@ export default function PokerTrainer() {
   const hero = players[0];
   const toCall = Math.max(0, currentBet - hero.bet);
   const advice = useMemo(() => gtoAdvice(hero.hand, board, toCall, pot, hero.stack), [hero.hand, board, toCall, pot, hero.stack]);
+  const hasSecondHuman = Boolean(room && room.players.length >= 2);
 
   useEffect(() => {
     const socketUrl =
@@ -406,10 +423,30 @@ export default function PokerTrainer() {
     nextSocket.on("roomUpdate", (nextRoom: RoomState) => {
       setRoom(nextRoom);
       setOnlineMessage(`房间 ${nextRoom.code}：${nextRoom.players.length}/2 人已加入`);
+
+      if (nextRoom.players.length >= 2 && handOver) {
+        setPlayers(createPlayers(aiLevel, true));
+      }
     });
 
     nextSocket.on("errorMessage", (msg: string) => {
       setOnlineMessage(msg);
+    });
+
+    nextSocket.on("gameSync", (state: SyncedGameState) => {
+      if (!state) return;
+      setPlayers(state.players);
+      setDeck(state.deck);
+      setBoard(state.board);
+      setPot(state.pot);
+      setCurrentBet(state.currentBet);
+      setStreet(state.street);
+      setMessage(state.message);
+      setActionLog(state.actionLog);
+      setHandOver(state.handOver);
+      setShowAiCards(state.showAiCards);
+      setActingPlayerId(null);
+      setIsResolving(false);
     });
 
     nextSocket.on("disconnect", () => {
@@ -439,6 +476,15 @@ export default function PokerTrainer() {
     socket?.emit("joinRoom", code);
   }
 
+  function syncGameState(nextState: SyncedGameState) {
+    if (!socket || !socket.connected || !room) return;
+
+    socket.emit("gameSync", {
+      roomCode: room.code,
+      state: nextState,
+    });
+  }
+
   function addChipBurst(playerId: number, amount: number) {
     if (amount <= 0) return;
     const id = Date.now() + Math.random();
@@ -448,7 +494,7 @@ export default function PokerTrainer() {
 
   function resetGame(level = aiLevel) {
     setAiLevel(level);
-    setPlayers(createPlayers(level));
+    setPlayers(createPlayers(level, hasSecondHuman));
     setDeck([]);
     setBoard([]);
     setPot(0);
@@ -482,7 +528,7 @@ export default function PokerTrainer() {
         lastAction: "等待",
       }))
       .filter((p) => p.stack > 0);
-    if (!newPlayers.some((p) => p.isHero)) newPlayers = createPlayers(aiLevel);
+    if (!newPlayers.some((p) => p.isHero)) newPlayers = createPlayers(aiLevel, hasSecondHuman);
 
     for (let round = 0; round < 2; round++) {
       newPlayers = newPlayers.map((p) => ({ ...p, hand: [...p.hand, newDeck.pop() as Card] }));
@@ -501,18 +547,34 @@ export default function PokerTrainer() {
       return { ...p, stack: p.stack - pay, bet: pay, lastAction: pay > 0 ? `盲注 ${pay}` : "等待" };
     });
 
+    const nextMessage = "新一手开始。你行动。每次你操作后，AI会按顺序思考和下注。";
+    const nextActionLog = ["新一手开始", ...log];
+
     setPlayers(newPlayers);
     setDeck(newDeck);
     setBoard([]);
     setPot(newPot);
     setCurrentBet(BIG_BLIND);
     setStreet("翻牌前");
-    setMessage("新一手开始。你行动。每次你操作后，AI会按顺序思考和下注。");
+    setMessage(nextMessage);
     setShowAiCards(false);
-    setActionLog(["新一手开始", ...log]);
+    setActionLog(nextActionLog);
     setActingPlayerId(0);
     setIsResolving(false);
     setHandOver(false);
+
+    syncGameState({
+      players: newPlayers,
+      deck: newDeck,
+      board: [],
+      pot: newPot,
+      currentBet: BIG_BLIND,
+      street: "翻牌前",
+      message: nextMessage,
+      actionLog: nextActionLog,
+      handOver: false,
+      showAiCards: false,
+    });
   }
 
   async function updateHero(action: string, amount = 0) {
@@ -573,6 +635,20 @@ export default function PokerTrainer() {
     setPlayers(newPlayers);
     setPot(newPot);
     setCurrentBet(newBet);
+
+    syncGameState({
+      players: newPlayers,
+      deck,
+      board,
+      pot: newPot,
+      currentBet: newBet,
+      street,
+      message,
+      actionLog,
+      handOver: false,
+      showAiCards,
+    });
+
     await sleep(500);
     await aiActSequential(newPlayers, newPot, newBet);
   }
@@ -585,7 +661,7 @@ export default function PokerTrainer() {
 
     for (let idx = 1; idx < newPlayers.length; idx++) {
       const p = newPlayers[idx];
-      if (p.folded || p.stack <= 0) continue;
+      if (p.folded || p.stack <= 0 || p.level === "human_remote") continue;
 
       setActingPlayerId(p.id);
       setMessage(`${p.name} 正在思考...`);
@@ -1130,6 +1206,10 @@ export default function PokerTrainer() {
 
                 <div className="mt-5 space-y-4 text-sm text-neutral-200">
                   <div className="rounded-2xl border border-emerald-700/60 bg-emerald-950/50 p-4">
+                    <div className="font-black text-white">v0.2.0-beta</div>
+                    <div>联机同步补丁：同房间内会同步开始新一手和玩家下注；第二位真人加入时替换鲨鱼AI，桌上保持6人。</div>
+                  </div>
+                  <div className="rounded-2xl border border-neutral-800 bg-neutral-900/70 p-4">
                     <div className="font-black text-white">v0.1.7-beta</div>
                     <div>周思仪转了50人民币，所以加入训练助手猫在手牌右侧。</div>
                   </div>
