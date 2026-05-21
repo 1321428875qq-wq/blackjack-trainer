@@ -9,7 +9,7 @@ const suits = ["♠", "♥", "♦", "♣"];
 const ranks = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
 const rankValue = Object.fromEntries(ranks.map((r, i) => [r, i + 2]));
 
-const APP_VERSION = "v0.1.0-beta";
+const APP_VERSION = "v0.1.3-beta";
 const STARTING_STACK = 5000;
 const SMALL_BLIND = 10;
 const BIG_BLIND = 20;
@@ -524,6 +524,7 @@ export default function PokerTrainer() {
     let newPlayers = [...basePlayers];
     let newPot = basePot;
     let newBet = baseBet;
+    let aiRaisesThisSequence = 0;
 
     for (let idx = 1; idx < newPlayers.length; idx++) {
       const p = newPlayers[idx];
@@ -536,18 +537,50 @@ export default function PokerTrainer() {
       const callNeed = Math.max(0, newBet - p.bet);
       const strength = estimateStrength(p.hand, board);
       const cfg = personaConfig(p.persona, p.level);
-      const levelBonus = p.level === "easy" ? -10 : p.level === "hard" ? 12 : 0;
-      const randomSwing = Math.random() * cfg.randomness - cfg.randomness / 2;
+      const levelBonus = p.level === "easy" ? -10 : p.level === "hard" ? 6 : 0;
+      const randomSwing = Math.random() * (cfg.randomness * 0.55) - (cfg.randomness * 0.55) / 2;
       const adjusted = strength + levelBonus + cfg.callBias + randomSwing;
       const updated = { ...p };
       let logText = "";
 
-      if (callNeed > 0 && adjusted < cfg.tightness && Math.random() > cfg.bluff) {
+      const isPreflop = board.length === 0;
+      const facingBigRaise = callNeed >= BIG_BLIND * 6;
+      const shallowStack = updated.stack <= BIG_BLIND * 15;
+
+      if (
+        callNeed > 0 &&
+        ((adjusted < cfg.tightness && Math.random() > cfg.bluff * 0.5) ||
+          (isPreflop && facingBigRaise && adjusted < 78))
+      ) {
         updated.folded = true;
         updated.lastAction = "弃牌";
         logText = `${updated.name} 弃牌`;
       } else {
-        const shouldAllIn = p.level === "hard" && updated.stack > callNeed && Math.random() < 0.08 && (strength > 62 || Math.random() < 0.35);
+        const alreadyAggressive =
+          updated.lastAction.includes("加注") ||
+          updated.lastAction.includes("全下") ||
+          updated.lastAction.includes("诈唬");
+
+        const hasPremiumHand = strength >= 82;
+
+        // v0.1.3-beta: 翻牌前禁止AI主动再加注/主动全下。
+        // 这样避免第一轮变成疯狗桌；翻牌前AI只会跟注或弃牌。
+        const canStillRaise =
+          !isPreflop &&
+          callNeed > 0 &&
+          aiRaisesThisSequence < 1 &&
+          !alreadyAggressive &&
+          !facingBigRaise &&
+          updated.stack > callNeed + BIG_BLIND * 6 &&
+          hasPremiumHand;
+
+        const shouldAllIn =
+          !isPreflop &&
+          canStillRaise &&
+          p.level === "hard" &&
+          shallowStack &&
+          hasPremiumHand &&
+          Math.random() < 0.015;
         if (shouldAllIn) {
           const pay = updated.stack;
           updated.stack = 0;
@@ -556,20 +589,25 @@ export default function PokerTrainer() {
           newPot += pay;
           newBet = Math.max(newBet, updated.bet);
           addChipBurst(updated.id, pay);
+          aiRaisesThisSequence += 1;
           logText = `${updated.name} 突然全下，总下注 ${updated.bet}`;
         } else {
-          const wantsRaise = updated.stack > callNeed + BIG_BLIND * 2 && (adjusted > 70 || Math.random() < cfg.aggression || Math.random() < cfg.bluff);
+          const wantsRaise =
+            !isPreflop &&
+            canStillRaise &&
+            adjusted > 84 &&
+            Math.random() < 0.18;
           if (wantsRaise) {
-            const maxUnits = p.level === "hard" ? 8 : 3;
-            const raiseSize = BIG_BLIND * (2 + Math.floor(Math.random() * maxUnits));
-            const raiseTo = newBet + raiseSize;
+            const raiseSize = BIG_BLIND * 3;
+            const raiseTo = Math.min(newBet + raiseSize, updated.bet + updated.stack);
             const pay = Math.min(raiseTo - updated.bet, updated.stack);
             updated.stack -= pay;
             updated.bet += pay;
-            updated.lastAction = strength < 45 ? `诈唬加注到 ${updated.bet}` : `加注到 ${updated.bet}`;
+            updated.lastAction = strength < 55 ? `半诈唬加注到 ${updated.bet}` : `加注到 ${updated.bet}`;
             newPot += pay;
             newBet = Math.max(newBet, updated.bet);
             addChipBurst(updated.id, pay);
+            aiRaisesThisSequence += 1;
             logText = `${updated.name} ${updated.lastAction}`;
           } else {
             const pay = Math.min(callNeed, updated.stack);
@@ -837,16 +875,16 @@ export default function PokerTrainer() {
                   <button disabled={isResolving} onClick={() => updateHero("fold")} className="rounded-xl bg-red-600 px-5 py-3 font-black disabled:opacity-40">
                     弃牌
                   </button>
-                  <button disabled={isResolving} onClick={() => updateHero("call")} className="rounded-xl bg-white text-emerald-950 px-5 py-3 font-black disabled:opacity-40">
+                  <button disabled={isResolving || hero.stack <= 0} onClick={() => updateHero("call")} className="rounded-xl bg-white text-emerald-950 px-5 py-3 font-black disabled:opacity-40">
                     {toCall > 0 ? `跟注 ${toCall}` : "过牌"}
                   </button>
-                  <button disabled={isResolving} onClick={() => updateHero("raise", BIG_BLIND * 2)} className="rounded-xl bg-amber-400 text-black px-5 py-3 font-black disabled:opacity-40">
+                  <button disabled={isResolving || hero.stack <= 0} onClick={() => updateHero("raise", BIG_BLIND * 2)} className="rounded-xl bg-amber-400 text-black px-5 py-3 font-black disabled:opacity-40">
                     加注 +40
                   </button>
-                  <button disabled={isResolving} onClick={() => updateHero("raise", BIG_BLIND * 5)} className="rounded-xl bg-orange-500 text-black px-5 py-3 font-black disabled:opacity-40">
+                  <button disabled={isResolving || hero.stack <= 0} onClick={() => updateHero("raise", BIG_BLIND * 5)} className="rounded-xl bg-orange-500 text-black px-5 py-3 font-black disabled:opacity-40">
                     大加注 +100
                   </button>
-                  <button disabled={isResolving} onClick={() => updateHero("allin")} className="rounded-xl bg-purple-500 px-5 py-3 font-black disabled:opacity-40">
+                  <button disabled={isResolving || hero.stack <= 0} onClick={() => updateHero("allin")} className="rounded-xl bg-purple-500 px-5 py-3 font-black disabled:opacity-40">
                     全下
                   </button>
                 </>
