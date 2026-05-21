@@ -9,7 +9,7 @@ const suits = ["♠", "♥", "♦", "♣"];
 const ranks = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
 const rankValue = Object.fromEntries(ranks.map((r, i) => [r, i + 2]));
 
-const APP_VERSION = "v0.1.3-beta";
+const APP_VERSION = "v0.1.4-beta";
 const STARTING_STACK = 5000;
 const SMALL_BLIND = 10;
 const BIG_BLIND = 20;
@@ -212,20 +212,76 @@ function estimateStrength(hand: Card[], board: Card[] = []) {
 
 function personaConfig(persona?: string, level = "normal") {
   const hard = level === "hard";
-  const base = {
+
+  if (persona === "loose_aggressive") {
+    return {
+      style: "LAG",
+      tightness: hard ? 26 : 34,
+      aggression: hard ? 0.42 : 0.28,
+      bluff: hard ? 0.24 : 0.12,
+      randomness: hard ? 28 : 16,
+      raiseThreshold: hard ? 72 : 78,
+      callBias: 6,
+    };
+  }
+
+  if (persona === "tricky") {
+    return {
+      style: "TRICKY",
+      tightness: hard ? 34 : 40,
+      aggression: hard ? 0.24 : 0.16,
+      bluff: hard ? 0.34 : 0.18,
+      randomness: hard ? 36 : 20,
+      raiseThreshold: hard ? 78 : 84,
+      callBias: 2,
+    };
+  }
+
+  if (persona === "tight") {
+    return {
+      style: "NIT",
+      tightness: hard ? 58 : 66,
+      aggression: hard ? 0.08 : 0.04,
+      bluff: hard ? 0.02 : 0.01,
+      randomness: hard ? 14 : 8,
+      raiseThreshold: hard ? 90 : 94,
+      callBias: -12,
+    };
+  }
+
+  if (persona === "calling_station") {
+    return {
+      style: "CALLING",
+      tightness: hard ? 22 : 28,
+      aggression: hard ? 0.04 : 0.02,
+      bluff: hard ? 0.01 : 0,
+      randomness: hard ? 18 : 10,
+      raiseThreshold: 99,
+      callBias: 18,
+    };
+  }
+
+  if (persona === "shark") {
+    return {
+      style: "SHARK",
+      tightness: hard ? 42 : 48,
+      aggression: hard ? 0.3 : 0.18,
+      bluff: hard ? 0.14 : 0.08,
+      randomness: hard ? 18 : 12,
+      raiseThreshold: hard ? 76 : 82,
+      callBias: 4,
+    };
+  }
+
+  return {
+    style: "NORMAL",
     tightness: 42,
     aggression: 0.12,
-    bluff: 0.07,
-    randomness: hard ? 26 : 14,
+    bluff: 0.06,
+    randomness: 18,
+    raiseThreshold: 82,
     callBias: 0,
   };
-
-  if (persona === "loose_aggressive") return { ...base, tightness: hard ? 24 : 32, aggression: hard ? 0.48 : 0.28, bluff: hard ? 0.35 : 0.16, randomness: hard ? 46 : 22 };
-  if (persona === "tricky") return { ...base, tightness: hard ? 32 : 38, aggression: hard ? 0.38 : 0.18, bluff: hard ? 0.3 : 0.14, randomness: hard ? 42 : 20 };
-  if (persona === "tight") return { ...base, tightness: hard ? 50 : 58, aggression: hard ? 0.22 : 0.1, bluff: hard ? 0.12 : 0.03, randomness: hard ? 24 : 12 };
-  if (persona === "calling_station") return { ...base, tightness: hard ? 28 : 34, aggression: hard ? 0.14 : 0.05, bluff: hard ? 0.08 : 0.02, randomness: hard ? 30 : 16, callBias: hard ? 18 : 10 };
-  if (persona === "shark") return { ...base, tightness: hard ? 34 : 40, aggression: hard ? 0.42 : 0.22, bluff: hard ? 0.22 : 0.1, randomness: hard ? 32 : 16 };
-  return base;
 }
 
 function gtoAdvice(hand: Card[], board: Card[], toCall: number, pot: number, heroStack: number) {
@@ -595,15 +651,27 @@ export default function PokerTrainer() {
           const wantsRaise =
             !isPreflop &&
             canStillRaise &&
-            adjusted > 84 &&
-            Math.random() < 0.18;
+            adjusted > cfg.raiseThreshold &&
+            Math.random() < cfg.aggression;
           if (wantsRaise) {
-            const raiseSize = BIG_BLIND * 3;
+            const raiseSize =
+              p.persona === "loose_aggressive"
+                ? BIG_BLIND * 5
+                : p.persona === "shark"
+                  ? BIG_BLIND * 4
+                  : BIG_BLIND * 3;
             const raiseTo = Math.min(newBet + raiseSize, updated.bet + updated.stack);
             const pay = Math.min(raiseTo - updated.bet, updated.stack);
             updated.stack -= pay;
             updated.bet += pay;
-            updated.lastAction = strength < 55 ? `半诈唬加注到 ${updated.bet}` : `加注到 ${updated.bet}`;
+            updated.lastAction =
+              strength < 55
+                ? `半诈唬加注到 ${updated.bet}`
+                : p.persona === "loose_aggressive"
+                  ? `激进加注到 ${updated.bet}`
+                  : p.persona === "shark"
+                    ? `价值加注到 ${updated.bet}`
+                    : `加注到 ${updated.bet}`;
             newPot += pay;
             newBet = Math.max(newBet, updated.bet);
             addChipBurst(updated.id, pay);
