@@ -76,35 +76,36 @@ function isRed(card: Card) {
 }
 
 function createPlayers(aiLevel: string): Player[] {
-  return [
-    {
-      id: 0,
-      name: "你",
-      stack: STARTING_STACK,
-      hand: [],
-      folded: false,
-      bet: 0,
-      lastAction: "等待",
-      isHero: true,
-      level: "hero",
-    },
-    ...Array.from({ length: 5 }).map((_, i) => ({
-      id: i + 1,
-      name: `AI ${i + 1}｜${aiPersonas[i].name}`,
-      stack: STARTING_STACK,
-      hand: [],
-      folded: false,
-      bet: 0,
-      lastAction: "等待",
-      isHero: false,
-      level: aiLevel,
-      persona: aiPersonas[i].style,
-    })),
-  ];
+  const heroPlayer: Player = {
+    id: 0,
+    name: "你",
+    stack: STARTING_STACK,
+    hand: [],
+    folded: false,
+    bet: 0,
+    lastAction: "等待",
+    isHero: true,
+    level: "hero",
+  };
+
+  const aiPlayers: Player[] = Array.from({ length: 5 }, (_, i): Player => ({
+    id: i + 1,
+    name: `AI ${i + 1}｜${aiPersonas[i].name}`,
+    stack: STARTING_STACK,
+    hand: [],
+    folded: false,
+    bet: 0,
+    lastAction: "等待",
+    isHero: false,
+    level: aiLevel,
+    persona: aiPersonas[i].style,
+  }));
+
+  return [heroPlayer, ...aiPlayers];
 }
 
-function cleanPlayers(players: Player[]) {
-  return players.map((p) => ({
+function cleanPlayers(players: Player[]): Player[] {
+  return players.map((p): Player => ({
     ...p,
     hand: [],
     folded: false,
@@ -327,11 +328,22 @@ export default function PokerTrainer() {
   const advice = useMemo(() => gtoAdvice(hero.hand, board, toCall, pot, hero.stack), [hero.hand, board, toCall, pot, hero.stack]);
 
   useEffect(() => {
-    const nextSocket = io("https://blackjack-trainer-production-d563.up.railway.app");
+    const socketUrl =
+      typeof window !== "undefined"
+        ? window.location.origin
+        : "https://blackjack-trainer-production-d563.up.railway.app";
+
+    const nextSocket = io(socketUrl, {
+      transports: ["websocket", "polling"],
+    });
     setSocket(nextSocket);
 
     nextSocket.on("connect", () => {
-      setOnlineMessage("已连接服务器，可以创建或加入房间。");
+      setOnlineMessage(`已连接服务器，可以创建或加入房间。Socket: ${nextSocket.id}`);
+    });
+
+    nextSocket.on("connect_error", (err) => {
+      setOnlineMessage(`连接失败：${err.message}`);
     });
 
     nextSocket.on("roomUpdate", (nextRoom: RoomState) => {
@@ -353,7 +365,12 @@ export default function PokerTrainer() {
   }, []);
 
   function createOnlineRoom() {
-    socket?.emit("createRoom");
+    if (!socket || !socket.connected) {
+      setOnlineMessage("Socket 还没连接成功，请刷新页面或稍等几秒。");
+      return;
+    }
+    setOnlineMessage("正在创建房间...");
+    socket.emit("createRoom");
   }
 
   function joinOnlineRoom() {
@@ -399,7 +416,15 @@ export default function PokerTrainer() {
     }
 
     const newDeck = makeDeck();
-    let newPlayers = cleanPlayers(players).filter((p) => p.stack > 0);
+    let newPlayers: Player[] = players
+      .map((p): Player => ({
+        ...p,
+        hand: [],
+        folded: false,
+        bet: 0,
+        lastAction: "等待",
+      }))
+      .filter((p) => p.stack > 0);
     if (!newPlayers.some((p) => p.isHero)) newPlayers = createPlayers(aiLevel);
 
     for (let round = 0; round < 2; round++) {
@@ -715,7 +740,7 @@ export default function PokerTrainer() {
         <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-3xl md:text-4xl font-black">Texas Hold'em AI 训练桌</h1>
-            <p className="text-emerald-200">顺序行动｜筹码动画｜GTO辅助｜AI牌手性格｜2人联机测试｜{APP_VERSION}</p>
+            <p className="text-emerald-200">顺序行动｜筹码动画｜GTO辅助｜AI牌手性格｜2人联机测试｜Beta {APP_VERSION}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
