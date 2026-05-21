@@ -9,7 +9,7 @@ const suits = ["♠", "♥", "♦", "♣"];
 const ranks = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
 const rankValue = Object.fromEntries(ranks.map((r, i) => [r, i + 2]));
 
-const APP_VERSION = "v0.2.2-beta";
+const APP_VERSION = "v0.2.3-beta";
 const STARTING_STACK = 5000;
 const SMALL_BLIND = 10;
 const BIG_BLIND = 20;
@@ -421,6 +421,11 @@ export default function PokerTrainer() {
       setOnlineMessage(`连接失败：${err.message}`);
     });
 
+    nextSocket.on("roomCreated", (nextRoom: RoomState) => {
+      setRoom(nextRoom);
+      setOnlineMessage(`房间 ${nextRoom.code}：${nextRoom.players.length}/2 人已加入`);
+    });
+
     nextSocket.on("roomUpdate", (nextRoom: RoomState) => {
       setRoom(nextRoom);
       setOnlineMessage(`房间 ${nextRoom.code}：${nextRoom.players.length}/2 人已加入`);
@@ -484,10 +489,20 @@ export default function PokerTrainer() {
   }
 
   function syncGameState(nextState: SyncedGameState) {
-    if (!socket || !socket.connected || !room) return;
+    if (!socket || !socket.connected) {
+      setOnlineMessage("同步失败：Socket 未连接");
+      return;
+    }
+
+    const activeRoomCode = room?.code || roomCodeInput.trim().toUpperCase();
+
+    if (!activeRoomCode) {
+      setOnlineMessage("同步失败：当前没有房间号");
+      return;
+    }
 
     socket.emit("gameSync", {
-      roomCode: room.code,
+      roomCode: activeRoomCode,
       state: nextState,
     });
   }
@@ -1323,6 +1338,10 @@ export default function PokerTrainer() {
 
                 <div className="mt-5 max-h-[65vh] overflow-y-auto space-y-4 pr-1 text-sm text-neutral-200 pb-6">
                   <div className="rounded-2xl border border-emerald-700/60 bg-emerald-950/50 p-4">
+                    <div className="font-black text-white">v0.2.3-beta</div>
+                    <div>修复房主创建房间后没有记录 roomCreated，导致开始发牌时没有房间号、guest 一直等待同步的问题。</div>
+                  </div>
+                  <div className="rounded-2xl border border-neutral-800 bg-neutral-900/70 p-4">
                     <div className="font-black text-white">v0.2.2-beta</div>
                     <div>修复手机端更新日志关闭按钮；修复 guest 端接收同步时闭包状态导致的牌局不同步。</div>
                   </div>
