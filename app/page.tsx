@@ -9,7 +9,7 @@ const suits = ["♠", "♥", "♦", "♣"];
 const ranks = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
 const rankValue = Object.fromEntries(ranks.map((r, i) => [r, i + 2]));
 
-const APP_VERSION = "v0.1.6-beta";
+const APP_VERSION = "v0.1.7-beta";
 const STARTING_STACK = 5000;
 const SMALL_BLIND = 10;
 const BIG_BLIND = 20;
@@ -1017,9 +1017,14 @@ export default function PokerTrainer() {
                 <div className="text-emerald-200">筹码：{hero.stack}｜需跟注：{toCall}</div>
                 <div className="text-xs text-sky-200">上次行动：{hero.lastAction}</div>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 pr-28 md:pr-40">
                 {hero.hand.length ? hero.hand.map((c, i) => <CardView key={i} card={c} />) : <div className="text-emerald-200">点击开始新一手</div>}
               </div>
+              <img
+                src="/cat-cutout.png"
+                alt="训练助手猫"
+                className="pointer-events-none absolute right-4 top-6 z-10 w-24 md:w-36 drop-shadow-2xl select-none"
+              />
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -1125,6 +1130,10 @@ export default function PokerTrainer() {
 
                 <div className="mt-5 space-y-4 text-sm text-neutral-200">
                   <div className="rounded-2xl border border-emerald-700/60 bg-emerald-950/50 p-4">
+                    <div className="font-black text-white">v0.1.7-beta</div>
+                    <div>周思仪转了50人民币，所以加入训练助手猫在手牌右侧。</div>
+                  </div>
+                  <div className="rounded-2xl border border-neutral-800 bg-neutral-900/70 p-4">
                     <div className="font-black text-white">v0.1.6-beta</div>
                     <div>AI大补丁：加入偷鸡下注、半诈唬加注、少量全下诈唬、价值全下和更明显的人格差异。</div>
                   </div>
