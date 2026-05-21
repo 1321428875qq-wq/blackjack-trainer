@@ -9,7 +9,7 @@ const suits = ["♠", "♥", "♦", "♣"];
 const ranks = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
 const rankValue = Object.fromEntries(ranks.map((r, i) => [r, i + 2]));
 
-const APP_VERSION = "v0.1.5-beta";
+const APP_VERSION = "v0.1.6-beta";
 const STARTING_STACK = 5000;
 const SMALL_BLIND = 10;
 const BIG_BLIND = 20;
@@ -589,90 +589,140 @@ export default function PokerTrainer() {
 
       setActingPlayerId(p.id);
       setMessage(`${p.name} 正在思考...`);
-      await sleep(p.level === "hard" ? 650 + Math.random() * 900 : 450 + Math.random() * 500);
+      await sleep(p.level === "hard" ? 650 + Math.random() * 950 : 450 + Math.random() * 500);
 
       const callNeed = Math.max(0, newBet - p.bet);
       const strength = estimateStrength(p.hand, board);
       const cfg = personaConfig(p.persona, p.level);
-      const levelBonus = p.level === "easy" ? -10 : p.level === "hard" ? 6 : 0;
-      const randomSwing = Math.random() * (cfg.randomness * 0.55) - (cfg.randomness * 0.55) / 2;
-      const adjusted = strength + levelBonus + cfg.callBias + randomSwing;
+      const isPreflop = board.length === 0;
+      const isFlop = board.length === 3;
+      const isTurn = board.length === 4;
+      const isRiver = board.length === 5;
+      const potAfterCall = newPot + callNeed;
+      const potPressure = callNeed > 0 ? callNeed / Math.max(1, potAfterCall) : 0;
+      const randomSwing = Math.random() * cfg.randomness - cfg.randomness / 2;
+      const adjusted = strength + cfg.callBias + randomSwing;
       const updated = { ...p };
       let logText = "";
 
-      const isPreflop = board.length === 0;
-      const facingBigRaise = callNeed >= BIG_BLIND * 6;
-      const shallowStack = updated.stack <= BIG_BLIND * 15;
+      const isLag = p.persona === "loose_aggressive";
+      const isTricky = p.persona === "tricky";
+      const isNit = p.persona === "tight";
+      const isCallingStation = p.persona === "calling_station";
+      const isShark = p.persona === "shark";
 
-      if (
-        callNeed > 0 &&
-        ((adjusted < cfg.tightness && Math.random() > cfg.bluff * 0.5) ||
-          (isPreflop && facingBigRaise && adjusted < 78))
-      ) {
-        updated.folded = true;
-        updated.lastAction = "弃牌";
-        logText = `${updated.name} 弃牌`;
-      } else {
-        const alreadyAggressive =
-          updated.lastAction.includes("加注") ||
-          updated.lastAction.includes("全下") ||
-          updated.lastAction.includes("诈唬");
+      const strongHand = adjusted >= (isPreflop ? 86 : 76);
+      const premiumHand = adjusted >= (isPreflop ? 92 : 84);
+      const monsterHand = adjusted >= (isPreflop ? 97 : 92);
+      const playableHand = adjusted >= (isPreflop ? 48 : 44);
+      const shortStack = updated.stack <= BIG_BLIND * 18;
+      const facingBigRaise = isPreflop ? callNeed >= BIG_BLIND * 7 : potPressure >= 0.42;
+      const alreadyAggressive =
+        updated.lastAction.includes("加注") ||
+        updated.lastAction.includes("全下") ||
+        updated.lastAction.includes("诈唬") ||
+        updated.lastAction.includes("下注");
 
-        const hasPremiumHand = strength >= 82;
+      const bluffFrequency =
+        isLag ? 0.16 :
+        isTricky ? 0.2 :
+        isShark ? 0.07 :
+        isNit ? 0.015 :
+        isCallingStation ? 0.005 :
+        0.04;
 
-        // v0.1.3-beta: 翻牌前禁止AI主动再加注/主动全下。
-        // 这样避免第一轮变成疯狗桌；翻牌前AI只会跟注或弃牌。
-        const canStillRaise =
-          !isPreflop &&
-          callNeed > 0 &&
-          aiRaisesThisSequence < 1 &&
-          !alreadyAggressive &&
-          !facingBigRaise &&
-          updated.stack > callNeed + BIG_BLIND * 6 &&
-          hasPremiumHand;
+      const canAggress =
+        aiRaisesThisSequence < 1 &&
+        !alreadyAggressive &&
+        updated.stack > callNeed + BIG_BLIND * 5;
 
-        const shouldAllIn =
-          !isPreflop &&
-          canStillRaise &&
-          p.level === "hard" &&
-          shallowStack &&
-          hasPremiumHand &&
-          Math.random() < 0.015;
-        if (shouldAllIn) {
-          const pay = updated.stack;
-          updated.stack = 0;
-          updated.bet += pay;
-          updated.lastAction = `突然全下 ${updated.bet}`;
-          newPot += pay;
-          newBet = Math.max(newBet, updated.bet);
-          addChipBurst(updated.id, pay);
-          aiRaisesThisSequence += 1;
-          logText = `${updated.name} 突然全下，总下注 ${updated.bet}`;
+      const rareAllInBluff =
+        !isPreflop &&
+        (isTurn || isRiver) &&
+        (isLag || isTricky) &&
+        !monsterHand &&
+        adjusted < 58 &&
+        updated.stack <= Math.max(BIG_BLIND * 25, newPot * 0.75) &&
+        Math.random() < (isRiver ? 0.025 : 0.012);
+
+      const valueAllIn =
+        !isPreflop &&
+        shortStack &&
+        premiumHand &&
+        Math.random() < (isShark ? 0.35 : isLag ? 0.28 : 0.18);
+
+      const shouldAllIn = canAggress && (valueAllIn || rareAllInBluff);
+
+      if (shouldAllIn) {
+        const pay = updated.stack;
+        updated.stack = 0;
+        updated.bet += pay;
+        updated.lastAction = rareAllInBluff ? `全下诈唬 ${updated.bet}` : `价值全下 ${updated.bet}`;
+        newPot += pay;
+        newBet = Math.max(newBet, updated.bet);
+        addChipBurst(updated.id, pay);
+        aiRaisesThisSequence += 1;
+        logText = `${updated.name} ${updated.lastAction}`;
+      } else if (callNeed > 0) {
+        const foldThreshold =
+          cfg.tightness +
+          (facingBigRaise ? 16 : 0) +
+          (isNit ? 8 : 0) -
+          (isCallingStation ? 18 : 0) -
+          (isLag ? 5 : 0);
+
+        const shouldFold =
+          !isCallingStation &&
+          !premiumHand &&
+          adjusted < foldThreshold &&
+          Math.random() > bluffFrequency;
+
+        if (shouldFold) {
+          updated.folded = true;
+          updated.lastAction = "弃牌";
+          logText = `${updated.name} 弃牌`;
         } else {
-          const wantsRaise =
+          const preflopThreeBet =
+            isPreflop &&
+            canAggress &&
+            !facingBigRaise &&
+            (premiumHand || (isLag && strongHand && Math.random() < 0.18) || (isTricky && strongHand && Math.random() < 0.1));
+
+          const postflopSemiBluff =
             !isPreflop &&
-            canStillRaise &&
-            adjusted > cfg.raiseThreshold &&
+            canAggress &&
+            (isFlop || isTurn) &&
+            adjusted >= 54 &&
+            adjusted < 76 &&
+            (isLag || isTricky) &&
+            Math.random() < bluffFrequency;
+
+          const postflopValueRaise =
+            !isPreflop &&
+            canAggress &&
+            adjusted >= cfg.raiseThreshold &&
             Math.random() < cfg.aggression;
+
+          const wantsRaise = preflopThreeBet || postflopSemiBluff || postflopValueRaise;
+
           if (wantsRaise) {
-            const raiseSize =
-              p.persona === "loose_aggressive"
-                ? BIG_BLIND * 5
-                : p.persona === "shark"
-                  ? BIG_BLIND * 4
-                  : BIG_BLIND * 3;
+            const raiseSize = isPreflop
+              ? BIG_BLIND * (isLag ? 5 : isShark ? 4 : 3)
+              : Math.max(
+                  BIG_BLIND * 3,
+                  Math.round((newPot * (isLag ? 0.65 : isShark ? 0.55 : 0.45)) / BIG_BLIND) * BIG_BLIND
+                );
             const raiseTo = Math.min(newBet + raiseSize, updated.bet + updated.stack);
             const pay = Math.min(raiseTo - updated.bet, updated.stack);
             updated.stack -= pay;
             updated.bet += pay;
-            updated.lastAction =
-              strength < 55
-                ? `半诈唬加注到 ${updated.bet}`
-                : p.persona === "loose_aggressive"
-                  ? `激进加注到 ${updated.bet}`
-                  : p.persona === "shark"
-                    ? `价值加注到 ${updated.bet}`
-                    : `加注到 ${updated.bet}`;
+            updated.lastAction = postflopSemiBluff || (preflopThreeBet && !premiumHand)
+              ? `偷鸡加注到 ${updated.bet}`
+              : isLag
+                ? `激进加注到 ${updated.bet}`
+                : isShark
+                  ? `价值加注到 ${updated.bet}`
+                  : `加注到 ${updated.bet}`;
             newPot += pay;
             newBet = Math.max(newBet, updated.bet);
             addChipBurst(updated.id, pay);
@@ -687,6 +737,38 @@ export default function PokerTrainer() {
             addChipBurst(updated.id, pay);
             logText = `${updated.name} ${updated.lastAction}`;
           }
+        }
+      } else {
+        const probeBet =
+          !isPreflop &&
+          canAggress &&
+          playableHand &&
+          Math.random() < (isLag ? 0.24 : isTricky ? 0.18 : isShark ? 0.14 : isNit ? 0.04 : 0.07);
+
+        const bluffBet =
+          !isPreflop &&
+          canAggress &&
+          !playableHand &&
+          (isLag || isTricky) &&
+          Math.random() < bluffFrequency * 0.65;
+
+        if (probeBet || bluffBet) {
+          const betSize = Math.max(
+            BIG_BLIND * 2,
+            Math.round((Math.max(newPot, BIG_BLIND * 4) * (bluffBet ? 0.38 : 0.5)) / BIG_BLIND) * BIG_BLIND
+          );
+          const pay = Math.min(betSize, updated.stack);
+          updated.stack -= pay;
+          updated.bet += pay;
+          updated.lastAction = bluffBet ? `偷鸡下注 ${pay}` : `下注 ${pay}`;
+          newPot += pay;
+          newBet = Math.max(newBet, updated.bet);
+          addChipBurst(updated.id, pay);
+          aiRaisesThisSequence += 1;
+          logText = `${updated.name} ${updated.lastAction}`;
+        } else {
+          updated.lastAction = "过牌";
+          logText = `${updated.name} 过牌`;
         }
       }
 
@@ -1043,6 +1125,10 @@ export default function PokerTrainer() {
 
                 <div className="mt-5 space-y-4 text-sm text-neutral-200">
                   <div className="rounded-2xl border border-emerald-700/60 bg-emerald-950/50 p-4">
+                    <div className="font-black text-white">v0.1.6-beta</div>
+                    <div>AI大补丁：加入偷鸡下注、半诈唬加注、少量全下诈唬、价值全下和更明显的人格差异。</div>
+                  </div>
+                  <div className="rounded-2xl border border-neutral-800 bg-neutral-900/70 p-4">
                     <div className="font-black text-white">v0.1.5-beta</div>
                     <div>标题更新为“德州扑克GTO训练器”，新增可打开的更新日志窗口。</div>
                   </div>
