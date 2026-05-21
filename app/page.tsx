@@ -9,7 +9,7 @@ const suits = ["♠", "♥", "♦", "♣"];
 const ranks = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
 const rankValue = Object.fromEntries(ranks.map((r, i) => [r, i + 2]));
 
-const APP_VERSION = "v0.2.1-beta";
+const APP_VERSION = "v0.2.2-beta";
 const STARTING_STACK = 5000;
 const SMALL_BLIND = 10;
 const BIG_BLIND = 20;
@@ -425,15 +425,15 @@ export default function PokerTrainer() {
       setRoom(nextRoom);
       setOnlineMessage(`房间 ${nextRoom.code}：${nextRoom.players.length}/2 人已加入`);
 
-      if (nextRoom.players.length >= 2) {
-  setPlayers((prev) =>
-    prev.map((p) =>
-      p.id === 5
-        ? { ...p, name: "真人玩家 2", level: "human_remote", persona: "human_remote" }
-        : p
-    )
-  );
-}
+      if (nextRoom.players.length >= 2 && handOver) {
+        setPlayers((prev) =>
+          prev.map((p) =>
+            p.id === 5
+              ? { ...p, name: "真人玩家 2", level: "human_remote", persona: "human_remote" }
+              : p
+          )
+        );
+      }
     });
 
     nextSocket.on("errorMessage", (msg: string) => {
@@ -442,25 +442,7 @@ export default function PokerTrainer() {
 
     nextSocket.on("gameSync", (state: SyncedGameState) => {
       if (!state) return;
-      setPlayers(
-        state.players.map((p) => {
-          if (!socket) return p;
-
-          const isSelf = room?.players?.some((rp) => rp.id === socket.id) && p.id === 0;
-
-          if (isSelf) {
-            return {
-              ...p,
-              id: 0,
-              name: "你",
-              isHero: true,
-            };
-          }
-
-          return p;
-        })
-      );
-
+      setPlayers(state.players);
       setDeck(state.deck);
       setBoard(state.board);
       setPot(state.pot);
@@ -1339,7 +1321,11 @@ export default function PokerTrainer() {
                   </button>
                 </div>
 
-                <div className="mt-5 max-h-[70vh] overflow-y-auto space-y-4 pr-1 text-sm text-neutral-200 pb-24">
+                <div className="mt-5 max-h-[65vh] overflow-y-auto space-y-4 pr-1 text-sm text-neutral-200 pb-6">
+                  <div className="rounded-2xl border border-emerald-700/60 bg-emerald-950/50 p-4">
+                    <div className="font-black text-white">v0.2.2-beta</div>
+                    <div>修复手机端更新日志关闭按钮；修复 guest 端接收同步时闭包状态导致的牌局不同步。</div>
+                  </div>
                   <div className="rounded-2xl border border-emerald-700/60 bg-emerald-950/50 p-4">
                     <div className="font-black text-white">v0.2.1-beta</div>
                     <div>修复联机不同步：只有房主可以发牌，AI行动、公共牌、摊牌和结算都会同步到同房间另一端。</div>
@@ -1373,6 +1359,13 @@ export default function PokerTrainer() {
                     <div>基础德州扑克训练桌、AI牌手、GTO辅助、筹码动画和水印。</div>
                   </div>
                 </div>
+
+                <button
+                  onClick={() => setShowChangelog(false)}
+                  className="mt-4 w-full rounded-2xl bg-emerald-500 px-4 py-4 text-lg font-black text-black"
+                >
+                  关闭更新日志
+                </button>
               </motion.div>
             </motion.div>
           )}
