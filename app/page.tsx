@@ -105,7 +105,7 @@ function createPlayers(aiLevel: string): Player[] {
 function cleanPlayers(players: Player[]) {
   return players.map((p) => ({
     ...p,
-    hand: [],
+    hand: [] as Card[],
     folded: false,
     bet: 0,
     lastAction: "等待",
