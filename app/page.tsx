@@ -9,7 +9,7 @@ const suits = ["♠", "♥", "♦", "♣"];
 const ranks = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
 const rankValue = Object.fromEntries(ranks.map((r, i) => [r, i + 2]));
 
-const APP_VERSION = "v0.1.4-beta";
+const APP_VERSION = "v0.1.5-beta";
 const STARTING_STACK = 5000;
 const SMALL_BLIND = 10;
 const BIG_BLIND = 20;
@@ -372,6 +372,7 @@ export default function PokerTrainer() {
   const [street, setStreet] = useState("准备");
   const [message, setMessage] = useState("点击开始新一手。目标：打光5个困难AI的筹码。");
   const [showGto, setShowGto] = useState(false);
+  const [showChangelog, setShowChangelog] = useState(false);
   const [showAiCards, setShowAiCards] = useState(false);
   const [actionLog, setActionLog] = useState<string[]>([]);
   const [handOver, setHandOver] = useState(true);
@@ -845,10 +846,16 @@ export default function PokerTrainer() {
       <div className="mx-auto max-w-6xl space-y-5">
         <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h1 className="text-3xl md:text-4xl font-black">Texas Hold'em AI 训练桌</h1>
+            <h1 className="text-3xl md:text-4xl font-black">德州扑克GTO训练器</h1>
             <p className="text-emerald-200">顺序行动｜筹码动画｜GTO辅助｜AI牌手性格｜2人联机测试｜Beta {APP_VERSION}</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setShowChangelog(true)}
+              className="rounded-xl bg-sky-500 px-4 py-2 font-bold text-white"
+            >
+              更新日志
+            </button>
             <button
               onClick={() => resetGame("hard")}
               className="rounded-xl bg-white px-4 py-2 font-bold text-emerald-950"
@@ -1003,6 +1010,60 @@ export default function PokerTrainer() {
             <div className="text-xs text-sky-300 pt-2">注意：这是轻量训练算法，不是真正PioSolver/GTO Wizard级别的完整求解器。</div>
           </section>
         )}
+
+        <AnimatePresence>
+          {showChangelog && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+              onClick={() => setShowChangelog(false)}
+            >
+              <motion.div
+                initial={{ y: 20, scale: 0.96, opacity: 0 }}
+                animate={{ y: 0, scale: 1, opacity: 1 }}
+                exit={{ y: 20, scale: 0.96, opacity: 0 }}
+                transition={{ type: "spring", stiffness: 260, damping: 22 }}
+                onClick={(e) => e.stopPropagation()}
+                className="w-full max-w-2xl rounded-3xl border border-emerald-500/40 bg-neutral-950 p-6 shadow-2xl"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-2xl font-black">更新日志</h2>
+                    <p className="text-sm text-emerald-300">当前版本：{APP_VERSION}</p>
+                  </div>
+                  <button
+                    onClick={() => setShowChangelog(false)}
+                    className="rounded-xl bg-white px-3 py-1 text-sm font-black text-neutral-950"
+                  >
+                    关闭
+                  </button>
+                </div>
+
+                <div className="mt-5 space-y-4 text-sm text-neutral-200">
+                  <div className="rounded-2xl border border-emerald-700/60 bg-emerald-950/50 p-4">
+                    <div className="font-black text-white">v0.1.5-beta</div>
+                    <div>标题更新为“德州扑克GTO训练器”，新增可打开的更新日志窗口。</div>
+                  </div>
+                  <div className="rounded-2xl border border-neutral-800 bg-neutral-900/70 p-4">
+                    <div className="font-black text-white">v0.1.4-beta</div>
+                    <div>加入不同AI人格：疯狗、老油条、铁乌龟、跟注站、鲨鱼。</div>
+                  </div>
+                  <div className="rounded-2xl border border-neutral-800 bg-neutral-900/70 p-4">
+                    <div className="font-black text-white">v0.1.3-beta</div>
+                    <div>限制翻牌前AI主动再加注和主动全下，减少疯狗桌问题。</div>
+                  </div>
+                  <div className="rounded-2xl border border-neutral-800 bg-neutral-900/70 p-4">
+                    <div className="font-black text-white">v0.1.0-beta</div>
+                    <div>基础德州扑克训练桌、AI牌手、GTO辅助、筹码动画和水印。</div>
+                  </div>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <div className="fixed bottom-3 right-3 z-50 max-w-xs rounded-2xl border border-white/10 bg-black/70 px-4 py-3 text-right text-xs text-white/70 shadow-2xl backdrop-blur">
           <div className="font-black text-white">Poker Trainer {APP_VERSION}</div>
           <div>Created by 曹轩立 with assistance from ChatGPT</div>
