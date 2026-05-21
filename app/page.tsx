@@ -9,6 +9,7 @@ const suits = ["♠", "♥", "♦", "♣"];
 const ranks = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
 const rankValue = Object.fromEntries(ranks.map((r, i) => [r, i + 2]));
 
+const APP_VERSION = "v0.1.0-beta";
 const STARTING_STACK = 5000;
 const SMALL_BLIND = 10;
 const BIG_BLIND = 20;
@@ -105,7 +106,7 @@ function createPlayers(aiLevel: string): Player[] {
 function cleanPlayers(players: Player[]) {
   return players.map((p) => ({
     ...p,
-    hand: [] as Card[],
+    hand: [],
     folded: false,
     bet: 0,
     lastAction: "等待",
@@ -324,10 +325,9 @@ export default function PokerTrainer() {
   const hero = players[0];
   const toCall = Math.max(0, currentBet - hero.bet);
   const advice = useMemo(() => gtoAdvice(hero.hand, board, toCall, pot, hero.stack), [hero.hand, board, toCall, pot, hero.stack]);
-  const aiAlive = players.filter((p) => !p.isHero && p.stack > 0).length;
 
   useEffect(() => {
-    const nextSocket = io();
+    const nextSocket = io("https://blackjack-trainer-production-d563.up.railway.app");
     setSocket(nextSocket);
 
     nextSocket.on("connect", () => {
@@ -715,7 +715,7 @@ export default function PokerTrainer() {
         <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-3xl md:text-4xl font-black">Texas Hold'em AI 训练桌</h1>
-            <p className="text-emerald-200">顺序行动｜筹码动画｜GTO辅助｜AI牌手性格｜2人联机测试</p>
+            <p className="text-emerald-200">顺序行动｜筹码动画｜GTO辅助｜AI牌手性格｜2人联机测试｜{APP_VERSION}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
@@ -755,21 +755,17 @@ export default function PokerTrainer() {
           </div>
         </section>
 
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="rounded-2xl bg-emerald-900/70 border border-emerald-700 p-4">
-            <div className="text-emerald-200">底池</div>
-            <motion.div key={pot} initial={{ scale: 1.15 }} animate={{ scale: 1 }} className="text-4xl font-black">
+        <section className="grid grid-cols-2 gap-3 md:max-w-md">
+          <div className="rounded-xl bg-emerald-900/70 border border-emerald-700 px-4 py-3">
+            <div className="text-xs text-emerald-200">底池</div>
+            <motion.div key={pot} initial={{ scale: 1.12 }} animate={{ scale: 1 }} className="text-2xl font-black">
               {pot}
             </motion.div>
-            <ChipStack amount={pot} />
+            <ChipStack amount={pot} small />
           </div>
-          <div className="rounded-2xl bg-emerald-900/70 border border-emerald-700 p-4">
-            <div className="text-emerald-200">阶段</div>
-            <div className="text-4xl font-black">{street}</div>
-          </div>
-          <div className="rounded-2xl bg-emerald-900/70 border border-emerald-700 p-4">
-            <div className="text-emerald-200">剩余AI</div>
-            <div className="text-4xl font-black">{aiAlive}/5</div>
+          <div className="rounded-xl bg-emerald-900/70 border border-emerald-700 px-4 py-3">
+            <div className="text-xs text-emerald-200">阶段</div>
+            <div className="text-2xl font-black">{street}</div>
           </div>
         </section>
 
@@ -858,26 +854,7 @@ export default function PokerTrainer() {
           </motion.div>
         </section>
 
-        <section className="rounded-2xl bg-neutral-950 border border-neutral-800 p-4">
-          <div className="font-bold text-lg">提示</div>
-          <div className="text-neutral-300">{message}</div>
-          {isResolving && <div className="mt-2 text-yellow-300 animate-pulse">AI正在按顺序行动中...</div>}
-        </section>
 
-        <section className="rounded-2xl bg-neutral-950 border border-neutral-800 p-4">
-          <div className="font-bold text-lg mb-2">行动记录 / 下注记录</div>
-          {actionLog.length ? (
-            <div className="space-y-1 max-h-56 overflow-auto text-sm text-neutral-300">
-              {actionLog.map((item, i) => (
-                <div key={i} className="border-b border-neutral-800 pb-1">
-                  {item}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-neutral-500">还没有行动记录。</div>
-          )}
-        </section>
 
         {showGto && (
           <section className="rounded-2xl bg-sky-950 border border-sky-600 p-5 space-y-2">
@@ -895,6 +872,11 @@ export default function PokerTrainer() {
             <div className="text-xs text-sky-300 pt-2">注意：这是轻量训练算法，不是真正PioSolver/GTO Wizard级别的完整求解器。</div>
           </section>
         )}
+        <div className="fixed bottom-3 right-3 z-50 max-w-xs rounded-2xl border border-white/10 bg-black/70 px-4 py-3 text-right text-xs text-white/70 shadow-2xl backdrop-blur">
+          <div className="font-black text-white">Poker Trainer {APP_VERSION}</div>
+          <div>Created by 曹轩立 with assistance from ChatGPT</div>
+          <div>For training purposes only. Not for commercial use.</div>
+        </div>
       </div>
     </main>
   );

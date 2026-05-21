@@ -38,7 +38,9 @@ app.prepare().then(() => {
 
       socket.join(code);
 
+      socket.emit("roomCreated", rooms[code]);
       io.to(code).emit("roomUpdate", rooms[code]);
+      console.log("room created:", code);
     });
 
     socket.on("joinRoom", (code) => {
@@ -62,6 +64,7 @@ app.prepare().then(() => {
       socket.join(code);
 
       io.to(code).emit("roomUpdate", rooms[code]);
+      console.log("room joined:", code);
     });
 
     socket.on("disconnect", () => {
