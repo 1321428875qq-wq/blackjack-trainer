@@ -400,7 +400,7 @@ export default function PokerTrainer() {
   const toCall = Math.max(0, currentBet - hero.bet);
   const advice = useMemo(() => gtoAdvice(hero.hand, board, toCall, pot, hero.stack), [hero.hand, board, toCall, pot, hero.stack]);
   const hasSecondHuman = Boolean(room && room.players.length >= 2);
-  const isRoomHost = Boolean(!room || !socket || room.players[0]?.id === socket.id);
+  const isRoomHost = Boolean(room && socket && room.players[0]?.id === socket.id);
 
   useEffect(() => {
     const socketUrl =
@@ -425,9 +425,15 @@ export default function PokerTrainer() {
       setRoom(nextRoom);
       setOnlineMessage(`房间 ${nextRoom.code}：${nextRoom.players.length}/2 人已加入`);
 
-      if (nextRoom.players.length >= 2 && handOver) {
-        setPlayers(createPlayers(aiLevel, true));
-      }
+      if (nextRoom.players.length >= 2) {
+  setPlayers((prev) =>
+    prev.map((p) =>
+      p.id === 5
+        ? { ...p, name: "真人玩家 2", level: "human_remote", persona: "human_remote" }
+        : p
+    )
+  );
+}
     });
 
     nextSocket.on("errorMessage", (msg: string) => {
@@ -1301,7 +1307,7 @@ export default function PokerTrainer() {
                   </button>
                 </div>
 
-                <div className="mt-5 space-y-4 text-sm text-neutral-200">
+                <div className="mt-5 max-h-[70vh] overflow-y-auto space-y-4 pr-1 text-sm text-neutral-200 pb-24">
                   <div className="rounded-2xl border border-emerald-700/60 bg-emerald-950/50 p-4">
                     <div className="font-black text-white">v0.2.1-beta</div>
                     <div>修复联机不同步：只有房主可以发牌，AI行动、公共牌、摊牌和结算都会同步到同房间另一端。</div>
