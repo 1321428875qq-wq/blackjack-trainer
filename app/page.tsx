@@ -442,7 +442,25 @@ export default function PokerTrainer() {
 
     nextSocket.on("gameSync", (state: SyncedGameState) => {
       if (!state) return;
-      setPlayers(state.players);
+      setPlayers(
+        state.players.map((p) => {
+          if (!socket) return p;
+
+          const isSelf = room?.players?.some((rp) => rp.id === socket.id) && p.id === 0;
+
+          if (isSelf) {
+            return {
+              ...p,
+              id: 0,
+              name: "你",
+              isHero: true,
+            };
+          }
+
+          return p;
+        })
+      );
+
       setDeck(state.deck);
       setBoard(state.board);
       setPot(state.pot);
@@ -452,7 +470,7 @@ export default function PokerTrainer() {
       setActionLog(state.actionLog);
       setHandOver(state.handOver);
       setShowAiCards(state.showAiCards);
-      setActingPlayerId(null);
+      setActingPlayerId(state.handOver ? null : 0);
       setIsResolving(false);
     });
 
@@ -590,6 +608,7 @@ export default function PokerTrainer() {
 
   async function updateHero(action: string, amount = 0) {
     if (handOver || isResolving) return;
+    if (room && !isRoomHost && hero.id !== 0) return;
     setIsResolving(true);
 
     let newPlayers = [...players];
@@ -654,8 +673,21 @@ export default function PokerTrainer() {
       pot: newPot,
       currentBet: newBet,
       street,
-      message,
-      actionLog,
+      message: action === "fold"
+        ? "你弃牌了"
+        : action === "call"
+          ? "你选择跟注/过牌"
+          : action === "allin"
+            ? "你选择全下"
+            : "你选择加注",
+      actionLog:
+        action === "fold"
+          ? ["你弃牌", ...actionLog]
+          : action === "call"
+            ? [`你${toCall > 0 ? `跟注 ${toCall}` : "过牌"}`, ...actionLog]
+            : action === "allin"
+              ? [`你全下，总下注 ${h.bet}`, ...actionLog]
+              : [`你加注到 ${h.bet}`, ...actionLog],
       handOver: false,
       showAiCards,
     });
