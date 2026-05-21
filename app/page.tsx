@@ -9,7 +9,7 @@ const suits = ["♠", "♥", "♦", "♣"];
 const ranks = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
 const rankValue = Object.fromEntries(ranks.map((r, i) => [r, i + 2]));
 
-const APP_VERSION = "v0.2.0-beta";
+const APP_VERSION = "v0.2.1-beta";
 const STARTING_STACK = 5000;
 const SMALL_BLIND = 10;
 const BIG_BLIND = 20;
@@ -400,6 +400,7 @@ export default function PokerTrainer() {
   const toCall = Math.max(0, currentBet - hero.bet);
   const advice = useMemo(() => gtoAdvice(hero.hand, board, toCall, pot, hero.stack), [hero.hand, board, toCall, pot, hero.stack]);
   const hasSecondHuman = Boolean(room && room.players.length >= 2);
+  const isRoomHost = Boolean(!room || !socket || room.players[0]?.id === socket.id);
 
   useEffect(() => {
     const socketUrl =
@@ -510,6 +511,10 @@ export default function PokerTrainer() {
   }
 
   function startHand() {
+    if (room && !isRoomHost) {
+      setMessage("只有房主可以开始新一手，等待房主发牌同步。");
+      return;
+    }
     const activePlayers = players.filter((p) => p.stack > 0);
     if (hero.stack <= 0) return resetGame(aiLevel);
     if (activePlayers.filter((p) => !p.isHero).length === 0) {
@@ -848,12 +853,28 @@ export default function PokerTrainer() {
         }
       }
 
+      const nextActionLog = [logText, ...actionLog];
+
       newPlayers[idx] = updated;
       setPlayers([...newPlayers]);
       setPot(newPot);
       setCurrentBet(newBet);
       setActionLog((log) => [logText, ...log]);
       setMessage(logText);
+
+      syncGameState({
+        players: [...newPlayers],
+        deck,
+        board,
+        pot: newPot,
+        currentBet: newBet,
+        street,
+        message: logText,
+        actionLog: nextActionLog,
+        handOver: false,
+        showAiCards,
+      });
+
       await sleep(500);
 
       const active = newPlayers.filter((player) => !player.folded && player.stack >= 0);
@@ -866,8 +887,22 @@ export default function PokerTrainer() {
         setHandOver(true);
         setActingPlayerId(null);
         setIsResolving(false);
-        setActionLog((log) => [`${winner.name} 赢下底池 ${newPot}`, ...log]);
-        setMessage(`${winner.name} 赢下底池。点击下一手。`);
+        const winLog = `${winner.name} 赢下底池 ${newPot}`;
+        const winMessage = `${winner.name} 赢下底池。点击下一手。`;
+        setActionLog((log) => [winLog, ...log]);
+        setMessage(winMessage);
+        syncGameState({
+          players: newPlayers,
+          deck,
+          board,
+          pot: 0,
+          currentBet: newBet,
+          street,
+          message: winMessage,
+          actionLog: [winLog, ...actionLog],
+          handOver: true,
+          showAiCards: true,
+        });
         return;
       }
     }
@@ -882,8 +917,22 @@ export default function PokerTrainer() {
     if (heroNeedsToRespond) {
       setActingPlayerId(0);
       setIsResolving(false);
-      setMessage(`AI加注到 ${newBet}，现在轮到你。需要跟注 ${newBet - heroAfterAi.bet}。`);
-      setActionLog((log) => [`行动回到你：需要跟注 ${newBet - heroAfterAi.bet}`, ...log]);
+      const respondMessage = `AI加注到 ${newBet}，现在轮到你。需要跟注 ${newBet - heroAfterAi.bet}。`;
+      const respondLog = `行动回到你：需要跟注 ${newBet - heroAfterAi.bet}`;
+      setMessage(respondMessage);
+      setActionLog((log) => [respondLog, ...log]);
+      syncGameState({
+        players: newPlayers,
+        deck,
+        board,
+        pot: newPot,
+        currentBet: newBet,
+        street,
+        message: respondMessage,
+        actionLog: [respondLog, ...actionLog],
+        handOver: false,
+        showAiCards,
+      });
       return;
     }
 
@@ -913,14 +962,31 @@ export default function PokerTrainer() {
     }
 
     const clearedPlayers = newPlayers.map((p) => ({ ...p, bet: 0, lastAction: p.folded ? "已弃牌" : "等待" }));
+    const streetLog = `发出${nextStreet}：${newBoard.map(cardText).join(" ")}`;
+    const streetMessage = `${nextStreet}圈。你行动。`;
+    const nextActionLog = [streetLog, ...actionLog];
+
     setPlayers(clearedPlayers);
     setDeck(newDeck);
     setBoard(newBoard);
     setCurrentBet(0);
     setStreet(nextStreet);
     setActingPlayerId(0);
-    setActionLog((log) => [`发出${nextStreet}：${newBoard.map(cardText).join(" ")}`, ...log]);
-    setMessage(`${nextStreet}圈。你行动。`);
+    setActionLog((log) => [streetLog, ...log]);
+    setMessage(streetMessage);
+
+    syncGameState({
+      players: clearedPlayers,
+      deck: newDeck,
+      board: newBoard,
+      pot: newPot,
+      currentBet: 0,
+      street: nextStreet,
+      message: streetMessage,
+      actionLog: nextActionLog,
+      handOver: false,
+      showAiCards,
+    });
   }
 
   function showdown(finalPlayers = players, finalBoard = board, finalPot = pot) {
@@ -935,8 +1001,22 @@ export default function PokerTrainer() {
     setHandOver(true);
     setActingPlayerId(null);
     setIsResolving(false);
-    setActionLog((log) => [`摊牌：${winner.name} 用 ${handName(winner.score)} 赢下 ${finalPot}`, ...log]);
-    setMessage(`${winner.name} 摊牌获胜：${handName(winner.score)}。点击下一手继续。`);
+    const showLog = `摊牌：${winner.name} 用 ${handName(winner.score)} 赢下 ${finalPot}`;
+    const showMessage = `${winner.name} 摊牌获胜：${handName(winner.score)}。点击下一手继续。`;
+    setActionLog((log) => [showLog, ...log]);
+    setMessage(showMessage);
+    syncGameState({
+      players: newPlayers,
+      deck,
+      board: finalBoard,
+      pot: 0,
+      currentBet,
+      street,
+      message: showMessage,
+      actionLog: [showLog, ...actionLog],
+      handOver: true,
+      showAiCards: true,
+    });
   }
 
   function givePotToAi(newPlayers: Player[], newPot: number) {
@@ -949,7 +1029,20 @@ export default function PokerTrainer() {
     setHandOver(true);
     setActingPlayerId(null);
     setIsResolving(false);
-    setActionLog((log) => [`${aiWinner.name} 获得底池 ${newPot}`, ...log]);
+    const aiWinLog = `${aiWinner.name} 获得底池 ${newPot}`;
+    setActionLog((log) => [aiWinLog, ...log]);
+    syncGameState({
+      players: paid,
+      deck,
+      board,
+      pot: 0,
+      currentBet,
+      street,
+      message: `${aiWinner.name} 获得底池。`,
+      actionLog: [aiWinLog, ...actionLog],
+      handOver: true,
+      showAiCards: true,
+    });
   }
 
   function PlayerSeat({ p }: { p: Player }) {
@@ -1105,8 +1198,12 @@ export default function PokerTrainer() {
 
             <div className="flex flex-wrap gap-2">
               {handOver ? (
-                <button onClick={startHand} className="rounded-xl bg-white text-emerald-950 px-5 py-3 font-black">
-                  开始/下一手
+                <button
+                  disabled={Boolean(room && !isRoomHost)}
+                  onClick={startHand}
+                  className="rounded-xl bg-white text-emerald-950 px-5 py-3 font-black disabled:opacity-40"
+                >
+                  {room && !isRoomHost ? "等待房主发牌" : "开始/下一手"}
                 </button>
               ) : (
                 <>
@@ -1206,6 +1303,10 @@ export default function PokerTrainer() {
 
                 <div className="mt-5 space-y-4 text-sm text-neutral-200">
                   <div className="rounded-2xl border border-emerald-700/60 bg-emerald-950/50 p-4">
+                    <div className="font-black text-white">v0.2.1-beta</div>
+                    <div>修复联机不同步：只有房主可以发牌，AI行动、公共牌、摊牌和结算都会同步到同房间另一端。</div>
+                  </div>
+                  <div className="rounded-2xl border border-neutral-800 bg-neutral-900/70 p-4">
                     <div className="font-black text-white">v0.2.0-beta</div>
                     <div>联机同步补丁：同房间内会同步开始新一手和玩家下注；第二位真人加入时替换鲨鱼AI，桌上保持6人。</div>
                   </div>
