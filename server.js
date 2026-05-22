@@ -34,6 +34,7 @@ app.prepare().then(() => {
       rooms[code] = {
         code,
         players: [{ id: socket.id, name: "Player 1" }],
+        gameState: null,
       };
 
       socket.join(code);
@@ -64,7 +65,25 @@ app.prepare().then(() => {
       socket.join(code);
 
       io.to(code).emit("roomUpdate", rooms[code]);
+
+      if (rooms[code].gameState) {
+        socket.emit("gameSync", rooms[code].gameState);
+      }
+
       console.log("room joined:", code);
+    });
+
+    socket.on("gameSync", ({ roomCode, state }) => {
+      const code = String(roomCode || "").toUpperCase();
+
+      if (!rooms[code]) {
+        socket.emit("errorMessage", "房间不存在，无法同步牌局");
+        return;
+      }
+
+      rooms[code].gameState = state;
+      io.to(code).emit("gameSync", state);
+      console.log("game synced:", code);
     });
 
     socket.on("disconnect", () => {

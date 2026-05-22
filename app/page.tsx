@@ -9,7 +9,7 @@ const suits = ["♠", "♥", "♦", "♣"];
 const ranks = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
 const rankValue = Object.fromEntries(ranks.map((r, i) => [r, i + 2]));
 
-const APP_VERSION = "v0.2.3-beta";
+const APP_VERSION = "v0.2.4-beta";
 const STARTING_STACK = 5000;
 const SMALL_BLIND = 10;
 const BIG_BLIND = 20;
@@ -378,6 +378,7 @@ export default function PokerTrainer() {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [room, setRoom] = useState<RoomState | null>(null);
   const [roomCodeInput, setRoomCodeInput] = useState("");
+  const [activeRoomCode, setActiveRoomCode] = useState("");
   const [onlineMessage, setOnlineMessage] = useState("未连接房间");
   const [aiLevel, setAiLevel] = useState("hard");
   const [players, setPlayers] = useState<Player[]>(() => createPlayers("hard"));
@@ -423,11 +424,13 @@ export default function PokerTrainer() {
 
     nextSocket.on("roomCreated", (nextRoom: RoomState) => {
       setRoom(nextRoom);
+      setActiveRoomCode(nextRoom.code);
       setOnlineMessage(`房间 ${nextRoom.code}：${nextRoom.players.length}/2 人已加入`);
     });
 
     nextSocket.on("roomUpdate", (nextRoom: RoomState) => {
       setRoom(nextRoom);
+      setActiveRoomCode(nextRoom.code);
       setOnlineMessage(`房间 ${nextRoom.code}：${nextRoom.players.length}/2 人已加入`);
 
       if (nextRoom.players.length >= 2 && handOver) {
@@ -485,6 +488,7 @@ export default function PokerTrainer() {
       setOnlineMessage("请输入房间号。");
       return;
     }
+    setActiveRoomCode(code);
     socket?.emit("joinRoom", code);
   }
 
@@ -494,17 +498,19 @@ export default function PokerTrainer() {
       return;
     }
 
-    const activeRoomCode = room?.code || roomCodeInput.trim().toUpperCase();
+    const roomCodeForSync = activeRoomCode || room?.code || roomCodeInput.trim().toUpperCase();
 
-    if (!activeRoomCode) {
+    if (!roomCodeForSync) {
       setOnlineMessage("同步失败：当前没有房间号");
       return;
     }
 
     socket.emit("gameSync", {
-      roomCode: activeRoomCode,
+      roomCode: roomCodeForSync,
       state: nextState,
     });
+
+    setOnlineMessage(`已同步牌局到房间 ${roomCodeForSync}`);
   }
 
   function addChipBurst(playerId: number, amount: number) {
