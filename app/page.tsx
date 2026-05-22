@@ -648,7 +648,7 @@ export default function PokerTrainer() {
       h.bet += pay;
       h.lastAction = toCall > 0 ? `跟注 ${pay}` : "过牌";
       newPot += pay;
-      addChipBurst(0, pay);
+      addChipBurst(mySeatId, pay);
       setActionLog((log) => [`你${toCall > 0 ? `跟注 ${pay}` : "过牌"}`, ...log]);
     }
 
@@ -660,7 +660,7 @@ export default function PokerTrainer() {
       h.lastAction = `加注到 ${h.bet}`;
       newPot += pay;
       newBet = Math.max(newBet, h.bet);
-      addChipBurst(0, pay);
+      addChipBurst(mySeatId, pay);
       setActionLog((log) => [`你加注到 ${h.bet}`, ...log]);
     }
 
@@ -671,7 +671,7 @@ export default function PokerTrainer() {
       h.lastAction = `全下 ${h.bet}`;
       newPot += pay;
       newBet = Math.max(newBet, h.bet);
-      addChipBurst(0, pay);
+      addChipBurst(mySeatId, pay);
       setActionLog((log) => [`你全下，总下注 ${h.bet}`, ...log]);
     }
 
@@ -963,7 +963,7 @@ export default function PokerTrainer() {
     setPot(newPot);
     setCurrentBet(newBet);
 
-    const heroAfterAi = newPlayers[0];
+    const heroAfterAi = newPlayers.find((p) => p.id === mySeatId) || newPlayers[0];
     const heroNeedsToRespond = !heroAfterAi.folded && heroAfterAi.stack > 0 && newBet > heroAfterAi.bet;
 
     if (heroNeedsToRespond) {
@@ -1315,7 +1315,7 @@ export default function PokerTrainer() {
 
             <ChipStack amount={hero.bet} />
             <AnimatePresence>
-              {chipBursts.filter((burst) => burst.playerId === 0).map((burst) => (
+              {chipBursts.filter((burst) => burst.playerId === mySeatId).map((burst) => (
                 <motion.div
                   key={burst.id}
                   initial={{ y: -10, opacity: 0, scale: 0.6 }}
