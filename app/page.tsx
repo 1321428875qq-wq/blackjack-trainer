@@ -9,7 +9,7 @@ const suits = ["♠", "♥", "♦", "♣"];
 const ranks = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
 const rankValue = Object.fromEntries(ranks.map((r, i) => [r, i + 2]));
 
-const APP_VERSION = "v0.2.5-beta";
+const APP_VERSION = "v0.2.6-beta";
 const STARTING_STACK = 5000;
 const SMALL_BLIND = 10;
 const BIG_BLIND = 20;
@@ -381,6 +381,7 @@ export default function PokerTrainer() {
   const [activeRoomCode, setActiveRoomCode] = useState("");
   const [mySeatId, setMySeatId] = useState(0);
   const [onlineMessage, setOnlineMessage] = useState("未连接房间");
+  const [gameMode, setGameMode] = useState<"ai" | "multiplayer">("ai");
   const [aiLevel, setAiLevel] = useState("hard");
   const [players, setPlayers] = useState<Player[]>(() => createPlayers("hard"));
   const [deck, setDeck] = useState<Card[]>([]);
@@ -479,6 +480,8 @@ export default function PokerTrainer() {
   }, []);
 
   function createOnlineRoom() {
+    setGameMode("multiplayer");
+    setShowAiCards(false);
     if (!socket || !socket.connected) {
       setOnlineMessage("Socket 还没连接成功，请刷新页面或稍等几秒。");
       return;
@@ -488,6 +491,8 @@ export default function PokerTrainer() {
   }
 
   function joinOnlineRoom() {
+    setGameMode("multiplayer");
+    setShowAiCards(false);
     const code = roomCodeInput.trim().toUpperCase();
     if (!code) {
       setOnlineMessage("请输入房间号。");
@@ -1113,7 +1118,13 @@ export default function PokerTrainer() {
         <div className="text-xs text-emerald-300">{p.folded ? "已弃牌" : p.stack <= 0 ? "全下" : "游戏中"}</div>
         <div className="flex gap-1 mt-2">
           {p.hand.length ? (
-            p.hand.map((c, i) => <CardView key={i} card={c} hidden={!showAiCards && !handOver} />)
+            p.hand.map((c, i) => (
+  <CardView
+    key={i}
+    card={c}
+    hidden={gameMode === "multiplayer" || (!showAiCards && !handOver)}
+  />
+))
           ) : (
             <>
               <CardView hidden />
@@ -1145,24 +1156,38 @@ export default function PokerTrainer() {
         <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-3xl md:text-4xl font-black">德州扑克GTO训练器</h1>
-            <p className="text-emerald-200">顺序行动｜筹码动画｜GTO辅助｜AI牌手性格｜2人联机测试｜Beta {APP_VERSION}</p>
+            <p className="text-emerald-200">Beta {APP_VERSION}</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => {
+                setGameMode("ai");
+                setShowAiCards(false);
+                resetGame("hard");
+              }}
+              className={`rounded-xl px-4 py-2 font-bold ${gameMode === "ai" ? "bg-white text-emerald-950" : "bg-emerald-800 text-white"}`}
+            >
+              AI模式
+            </button>
+            <button
+              onClick={() => {
+                setGameMode("multiplayer");
+                setShowAiCards(false);
+              }}
+              className={`rounded-xl px-4 py-2 font-bold ${gameMode === "multiplayer" ? "bg-white text-emerald-950" : "bg-emerald-800 text-white"}`}
+            >
+              真人模式
+            </button>
             <button
               onClick={() => setShowChangelog(true)}
               className="rounded-xl bg-sky-500 px-4 py-2 font-bold text-white"
             >
               更新日志
             </button>
-            <button
-              onClick={() => resetGame("hard")}
-              className="rounded-xl bg-white px-4 py-2 font-bold text-emerald-950"
-            >
-              困难AI
-            </button>
           </div>
         </header>
 
+        {gameMode === "multiplayer" && (
         <section className="rounded-2xl bg-neutral-950 border border-emerald-700 p-4 space-y-3">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
             <div>
@@ -1190,6 +1215,7 @@ export default function PokerTrainer() {
             </div>
           </div>
         </section>
+        )}
 
         <section className="grid grid-cols-2 gap-3 md:max-w-md">
           <div className="rounded-xl bg-emerald-900/70 border border-emerald-700 px-4 py-3">
@@ -1274,9 +1300,14 @@ export default function PokerTrainer() {
               <button onClick={() => setShowGto((s) => !s)} className="rounded-xl bg-sky-500 px-5 py-3 font-black">
                 {showGto ? "关闭GTO辅助" : "打开GTO辅助"}
               </button>
-              <button onClick={() => setShowAiCards((s) => !s)} className="rounded-xl bg-indigo-500 px-5 py-3 font-black">
-                {showAiCards ? "隐藏AI手牌" : "显示AI手牌"}
-              </button>
+              {gameMode === "ai" && (
+  <button
+    onClick={() => setShowAiCards((s) => !s)}
+    className="rounded-xl bg-indigo-500 px-5 py-3 font-black"
+  >
+    {showAiCards ? "隐藏AI手牌" : "显示AI手牌"}
+  </button>
+)}
               <button onClick={() => resetGame(aiLevel)} className="rounded-xl bg-emerald-700 px-5 py-3 font-black">
                 重新开始
               </button>
@@ -1340,15 +1371,19 @@ export default function PokerTrainer() {
                     <h2 className="text-2xl font-black">更新日志</h2>
                     <p className="text-sm text-emerald-300">当前版本：{APP_VERSION}</p>
                   </div>
-                  <button
-                    onClick={() => setShowChangelog(false)}
-                    className="rounded-xl bg-white px-3 py-1 text-sm font-black text-neutral-950"
-                  >
-                    关闭
-                  </button>
                 </div>
 
                 <div className="mt-5 max-h-[65vh] overflow-y-auto space-y-4 pr-1 text-sm text-neutral-200 pb-6">
+
+  <div className="rounded-2xl border border-emerald-700/60 bg-emerald-950/50 p-4">
+    <div className="font-black text-white">v0.2.6-beta</div>
+    <div>新增AI模式/真人模式切换；真人模式隐藏AI和对手手牌；更新日志只保留下方关闭按钮。</div>
+  </div>
+
+  <div className="rounded-2xl border border-emerald-700/60 bg-emerald-950/50 p-4">
+    <div className="font-black text-white">v0.2.5-beta</div>
+    <div>修复 guest 和房主看到同一副手牌的问题：房主座位为0，guest座位为5，各自显示自己的手牌。</div>
+  </div>
                   <div className="rounded-2xl border border-emerald-700/60 bg-emerald-950/50 p-4">
                     <div className="font-black text-white">v0.2.5-beta</div>
                     <div>修复 guest 和房主看到同一副手牌的问题：房主座位为0，guest座位为5，各自显示自己的手牌。</div>
