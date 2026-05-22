@@ -91,7 +91,7 @@ function isRed(card: Card) {
 function createPlayers(aiLevel: string, includeSecondHuman = false): Player[] {
   const heroPlayer: Player = {
     id: 0,
-    name: "你",
+    name: includeSecondHuman ? "真人玩家 1" : "你",
     stack: STARTING_STACK,
     hand: [],
     folded: false,
@@ -721,6 +721,7 @@ export default function PokerTrainer() {
       if (p.folded || p.stack <= 0 || p.level === "human_remote") continue;
 
       setActingPlayerId(p.id);
+      setChipBursts([]);
       setMessage(`${p.name} 正在思考...`);
       await sleep(p.level === "hard" ? 650 + Math.random() * 950 : 450 + Math.random() * 500);
 
@@ -967,7 +968,7 @@ export default function PokerTrainer() {
     const heroNeedsToRespond = !heroAfterAi.folded && heroAfterAi.stack > 0 && newBet > heroAfterAi.bet;
 
     if (heroNeedsToRespond) {
-      setActingPlayerId(0);
+      setActingPlayerId(mySeatId);
       setIsResolving(false);
       const respondMessage = `AI加注到 ${newBet}，现在轮到你。需要跟注 ${newBet - heroAfterAi.bet}。`;
       const respondLog = `行动回到你：需要跟注 ${newBet - heroAfterAi.bet}`;
@@ -1023,7 +1024,7 @@ export default function PokerTrainer() {
     setBoard(newBoard);
     setCurrentBet(0);
     setStreet(nextStreet);
-    setActingPlayerId(0);
+    setActingPlayerId(mySeatId);
     setActionLog((log) => [streetLog, ...log]);
     setMessage(streetMessage);
 
@@ -1284,7 +1285,7 @@ export default function PokerTrainer() {
                     弃牌
                   </button>
                   <button disabled={isResolving || hero.stack <= 0} onClick={() => updateHero("call")} className="rounded-xl bg-white text-emerald-950 px-5 py-3 font-black disabled:opacity-40">
-                    {toCall > 0 ? `跟注 ${toCall}` : "过牌"}
+                    {hero.stack <= toCall ? "全下跟注" : toCall > 0 ? `跟注 ${toCall}` : "过牌"}
                   </button>
                   <button disabled={isResolving || hero.stack <= 0} onClick={() => updateHero("raise", BIG_BLIND * 2)} className="rounded-xl bg-amber-400 text-black px-5 py-3 font-black disabled:opacity-40">
                     加注 +40
@@ -1292,7 +1293,7 @@ export default function PokerTrainer() {
                   <button disabled={isResolving || hero.stack <= 0} onClick={() => updateHero("raise", BIG_BLIND * 5)} className="rounded-xl bg-orange-500 text-black px-5 py-3 font-black disabled:opacity-40">
                     大加注 +100
                   </button>
-                  <button disabled={isResolving || hero.stack <= 0} onClick={() => updateHero("allin")} className="rounded-xl bg-purple-500 px-5 py-3 font-black disabled:opacity-40">
+                  <button disabled={isResolving || hero.stack <= 0 || hero.stack <= toCall} onClick={() => updateHero("allin")} className="rounded-xl bg-purple-500 px-5 py-3 font-black disabled:opacity-40">
                     全下
                   </button>
                 </>
@@ -1315,7 +1316,7 @@ export default function PokerTrainer() {
 
             <ChipStack amount={hero.bet} />
             <AnimatePresence>
-              {chipBursts.filter((burst) => burst.playerId === mySeatId).map((burst) => (
+              {chipBursts.filter((burst) => burst.playerId === 0).map((burst) => (
                 <motion.div
                   key={burst.id}
                   initial={{ y: -10, opacity: 0, scale: 0.6 }}
@@ -1377,7 +1378,7 @@ export default function PokerTrainer() {
 
   <div className="rounded-2xl border border-emerald-700/60 bg-emerald-950/50 p-4">
     <div className="font-black text-white">v0.2.6-beta</div>
-    <div>新增AI模式/真人模式切换；真人模式隐藏AI和对手手牌；更新日志只保留下方关闭按钮。</div>
+    <div>新增AI模式/真人模式切换；修复guest筹码动画；修复联机下注顺序；真人模式隐藏AI和对手手牌；更新日志只保留下方关闭按钮。</div>
   </div>
 
   <div className="rounded-2xl border border-emerald-700/60 bg-emerald-950/50 p-4">
