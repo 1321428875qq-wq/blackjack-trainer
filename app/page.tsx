@@ -9,7 +9,7 @@ const suits = ["♠", "♥", "♦", "♣"];
 const ranks = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
 const rankValue = Object.fromEntries(ranks.map((r, i) => [r, i + 2]));
 
-const APP_VERSION = "v0.2.6-beta";
+const APP_VERSION = "v0.2.7-beta";
 const STARTING_STACK = 5000;
 const SMALL_BLIND = 10;
 const BIG_BLIND = 20;
@@ -622,6 +622,7 @@ export default function PokerTrainer() {
 
   async function updateHero(action: string, amount = 0) {
     if (handOver || isResolving) return;
+    if (actingPlayerId !== mySeatId) return;
     setIsResolving(true);
 
     let newPlayers = [...players];
@@ -1100,6 +1101,7 @@ export default function PokerTrainer() {
 
   function PlayerSeat({ p }: { p: Player }) {
     const isActing = actingPlayerId === p.id;
+    const displayName = gameMode === "multiplayer" && p.id === 0 ? "真人玩家 1" : p.name;
     return (
       <motion.div
         animate={{ scale: isActing ? 1.05 : 1, y: isActing ? -6 : 0 }}
@@ -1112,7 +1114,7 @@ export default function PokerTrainer() {
               : "border-emerald-600"
         }`}
       >
-        <div className="font-bold">{p.name}</div>
+        <div className="font-bold">{displayName}</div>
         <div className="text-sm text-emerald-200">筹码：{p.stack}</div>
         <div className="text-sm text-amber-200 font-bold">当前下注：{p.bet}</div>
         <div className="text-xs text-sky-200">上次行动：{p.lastAction}</div>
@@ -1281,19 +1283,19 @@ export default function PokerTrainer() {
                 </button>
               ) : (
                 <>
-                  <button disabled={isResolving} onClick={() => updateHero("fold")} className="rounded-xl bg-red-600 px-5 py-3 font-black disabled:opacity-40">
+                  <button disabled={isResolving || actingPlayerId !== mySeatId} onClick={() => updateHero("fold")} className="rounded-xl bg-red-600 px-5 py-3 font-black disabled:opacity-40">
                     弃牌
                   </button>
-                  <button disabled={isResolving || hero.stack <= 0} onClick={() => updateHero("call")} className="rounded-xl bg-white text-emerald-950 px-5 py-3 font-black disabled:opacity-40">
+                  <button disabled={isResolving || actingPlayerId !== mySeatId || hero.stack <= 0} onClick={() => updateHero("call")} className="rounded-xl bg-white text-emerald-950 px-5 py-3 font-black disabled:opacity-40">
                     {hero.stack <= toCall ? "全下跟注" : toCall > 0 ? `跟注 ${toCall}` : "过牌"}
                   </button>
-                  <button disabled={isResolving || hero.stack <= 0} onClick={() => updateHero("raise", BIG_BLIND * 2)} className="rounded-xl bg-amber-400 text-black px-5 py-3 font-black disabled:opacity-40">
+                  <button disabled={isResolving || actingPlayerId !== mySeatId || hero.stack <= 0} onClick={() => updateHero("raise", BIG_BLIND * 2)} className="rounded-xl bg-amber-400 text-black px-5 py-3 font-black disabled:opacity-40">
                     加注 +40
                   </button>
-                  <button disabled={isResolving || hero.stack <= 0} onClick={() => updateHero("raise", BIG_BLIND * 5)} className="rounded-xl bg-orange-500 text-black px-5 py-3 font-black disabled:opacity-40">
+                  <button disabled={isResolving || actingPlayerId !== mySeatId || hero.stack <= 0} onClick={() => updateHero("raise", BIG_BLIND * 5)} className="rounded-xl bg-orange-500 text-black px-5 py-3 font-black disabled:opacity-40">
                     大加注 +100
                   </button>
-                  <button disabled={isResolving || hero.stack <= 0 || hero.stack <= toCall} onClick={() => updateHero("allin")} className="rounded-xl bg-purple-500 px-5 py-3 font-black disabled:opacity-40">
+                  <button disabled={isResolving || actingPlayerId !== mySeatId || hero.stack <= 0 || hero.stack <= toCall} onClick={() => updateHero("allin")} className="rounded-xl bg-purple-500 px-5 py-3 font-black disabled:opacity-40">
                     全下
                   </button>
                 </>
@@ -1316,7 +1318,7 @@ export default function PokerTrainer() {
 
             <ChipStack amount={hero.bet} />
             <AnimatePresence>
-              {chipBursts.filter((burst) => burst.playerId === 0).map((burst) => (
+              {chipBursts.filter((burst) => burst.playerId === mySeatId).map((burst) => (
                 <motion.div
                   key={burst.id}
                   initial={{ y: -10, opacity: 0, scale: 0.6 }}
@@ -1385,10 +1387,6 @@ export default function PokerTrainer() {
     <div className="font-black text-white">v0.2.5-beta</div>
     <div>修复 guest 和房主看到同一副手牌的问题：房主座位为0，guest座位为5，各自显示自己的手牌。</div>
   </div>
-                  <div className="rounded-2xl border border-emerald-700/60 bg-emerald-950/50 p-4">
-                    <div className="font-black text-white">v0.2.5-beta</div>
-                    <div>修复 guest 和房主看到同一副手牌的问题：房主座位为0，guest座位为5，各自显示自己的手牌。</div>
-                  </div>
                   <div className="rounded-2xl border border-neutral-800 bg-neutral-900/70 p-4">
                     <div className="font-black text-white">v0.2.4-beta</div>
                     <div>重写同步房间号逻辑：使用 activeRoomCode 保存当前房间，并让服务器向房间内所有客户端广播 gameSync。</div>
