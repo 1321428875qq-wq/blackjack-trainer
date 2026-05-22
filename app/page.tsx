@@ -9,7 +9,7 @@ const suits = ["♠", "♥", "♦", "♣"];
 const ranks = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
 const rankValue = Object.fromEntries(ranks.map((r, i) => [r, i + 2]));
 
-const APP_VERSION = "v0.2.4-beta";
+const APP_VERSION = "v0.2.5-beta";
 const STARTING_STACK = 5000;
 const SMALL_BLIND = 10;
 const BIG_BLIND = 20;
@@ -42,7 +42,7 @@ type ChipBurst = {
 
 type RoomState = {
   code: string;
-  players: { id: string; name: string }[];
+  players: { id: string; name: string; seat?: number; role?: string }[];
 };
 
 type SyncedGameState = {
@@ -379,6 +379,7 @@ export default function PokerTrainer() {
   const [room, setRoom] = useState<RoomState | null>(null);
   const [roomCodeInput, setRoomCodeInput] = useState("");
   const [activeRoomCode, setActiveRoomCode] = useState("");
+  const [mySeatId, setMySeatId] = useState(0);
   const [onlineMessage, setOnlineMessage] = useState("未连接房间");
   const [aiLevel, setAiLevel] = useState("hard");
   const [players, setPlayers] = useState<Player[]>(() => createPlayers("hard"));
@@ -397,7 +398,7 @@ export default function PokerTrainer() {
   const [isResolving, setIsResolving] = useState(false);
   const [chipBursts, setChipBursts] = useState<ChipBurst[]>([]);
 
-  const hero = players[0];
+  const hero = players.find((p) => p.id === mySeatId) || players[0];
   const toCall = Math.max(0, currentBet - hero.bet);
   const advice = useMemo(() => gtoAdvice(hero.hand, board, toCall, pot, hero.stack), [hero.hand, board, toCall, pot, hero.stack]);
   const hasSecondHuman = Boolean(room && room.players.length >= 2);
@@ -425,12 +426,16 @@ export default function PokerTrainer() {
     nextSocket.on("roomCreated", (nextRoom: RoomState) => {
       setRoom(nextRoom);
       setActiveRoomCode(nextRoom.code);
+      setMySeatId(0);
       setOnlineMessage(`房间 ${nextRoom.code}：${nextRoom.players.length}/2 人已加入`);
     });
 
     nextSocket.on("roomUpdate", (nextRoom: RoomState) => {
       setRoom(nextRoom);
       setActiveRoomCode(nextRoom.code);
+      const currentSocketId = nextSocket.id;
+      const currentPlayer = nextRoom.players.find((p) => p.id === currentSocketId);
+      if (typeof currentPlayer?.seat === "number") setMySeatId(currentPlayer.seat);
       setOnlineMessage(`房间 ${nextRoom.code}：${nextRoom.players.length}/2 人已加入`);
 
       if (nextRoom.players.length >= 2 && handOver) {
@@ -489,6 +494,7 @@ export default function PokerTrainer() {
       return;
     }
     setActiveRoomCode(code);
+    setMySeatId(5);
     socket?.emit("joinRoom", code);
   }
 
@@ -611,18 +617,18 @@ export default function PokerTrainer() {
 
   async function updateHero(action: string, amount = 0) {
     if (handOver || isResolving) return;
-    if (room && !isRoomHost && hero.id !== 0) return;
     setIsResolving(true);
 
     let newPlayers = [...players];
     let newPot = pot;
     let newBet = currentBet;
-    const h = { ...newPlayers[0] };
+    const heroIndex = Math.max(0, newPlayers.findIndex((p) => p.id === mySeatId));
+    const h = { ...newPlayers[heroIndex] };
 
     if (action === "fold") {
       h.folded = true;
       h.lastAction = "弃牌";
-      newPlayers[0] = h;
+      newPlayers[heroIndex] = h;
       setPlayers(newPlayers);
       setActionLog((log) => ["你弃牌", ...log]);
       setShowAiCards(true);
@@ -664,7 +670,7 @@ export default function PokerTrainer() {
       setActionLog((log) => [`你全下，总下注 ${h.bet}`, ...log]);
     }
 
-    newPlayers[0] = h;
+    newPlayers[heroIndex] = h;
     setPlayers(newPlayers);
     setPot(newPot);
     setCurrentBet(newBet);
@@ -1201,7 +1207,7 @@ export default function PokerTrainer() {
 
         <section className="rounded-[2rem] bg-green-800 border-4 border-amber-900 shadow-2xl p-4 md:p-8 space-y-6">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            {players.slice(1).map((p) => <PlayerSeat key={p.id} p={p} />)}
+            {players.filter((p) => p.id !== mySeatId).map((p) => <PlayerSeat key={p.id} p={p} />)}
           </div>
 
           <div className="text-center space-y-3">
@@ -1216,9 +1222,9 @@ export default function PokerTrainer() {
           </div>
 
           <motion.div
-            animate={{ scale: actingPlayerId === 0 ? 1.015 : 1 }}
+            animate={{ scale: actingPlayerId === 0 || actingPlayerId === mySeatId ? 1.015 : 1 }}
             className={`relative rounded-2xl bg-emerald-950/80 border p-4 space-y-3 ${
-              actingPlayerId === 0 ? "border-yellow-300 shadow-[0_0_25px_rgba(250,204,21,0.45)]" : "border-emerald-600"
+              actingPlayerId === 0 || actingPlayerId === mySeatId ? "border-yellow-300 shadow-[0_0_25px_rgba(250,204,21,0.45)]" : "border-emerald-600"
             }`}
           >
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
@@ -1344,6 +1350,14 @@ export default function PokerTrainer() {
 
                 <div className="mt-5 max-h-[65vh] overflow-y-auto space-y-4 pr-1 text-sm text-neutral-200 pb-6">
                   <div className="rounded-2xl border border-emerald-700/60 bg-emerald-950/50 p-4">
+                    <div className="font-black text-white">v0.2.5-beta</div>
+                    <div>修复 guest 和房主看到同一副手牌的问题：房主座位为0，guest座位为5，各自显示自己的手牌。</div>
+                  </div>
+                  <div className="rounded-2xl border border-neutral-800 bg-neutral-900/70 p-4">
+                    <div className="font-black text-white">v0.2.4-beta</div>
+                    <div>重写同步房间号逻辑：使用 activeRoomCode 保存当前房间，并让服务器向房间内所有客户端广播 gameSync。</div>
+                  </div>
+                  <div className="rounded-2xl border border-neutral-800 bg-neutral-900/70 p-4">
                     <div className="font-black text-white">v0.2.3-beta</div>
                     <div>修复房主创建房间后没有记录 roomCreated，导致开始发牌时没有房间号、guest 一直等待同步的问题。</div>
                   </div>
